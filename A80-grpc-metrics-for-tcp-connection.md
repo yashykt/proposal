@@ -26,22 +26,39 @@ document uses that framework to propose per-connection TCP metrics.
 
 ### Related Proposals:
 
+*   [A66]: OpenTelemetry Metrics
+*   [A78]: gRPC OTel Metrics for WRR, Pick First, and XdsClient
 *   [A79]: gRPC Non-Per-Call Metrics Framework
+*   [A94]: OTel metrics for Subchannels
 
+[A66]: A66-otel-stats.md
+[A78]: A78-grpc-metrics-wrr-pf-xds.md
 [A79]: A79-non-per-call-metrics-architecture.md
+[A94]: https://github.com/grpc/proposal/pull/485
 
 ## Proposal
 
 This document proposes adding per-connection TCP metrics in gRPC to improve the
 network debugging capabilities for gRPC users.
 
-Name                                    | Type                       | Unit     | Labels | Description
---------------------------------------- | -------------------------- | -------- | ------ | -----------
-grpc.tcp.min_rtt                        | Histogram (floating-point) | s        | None   | TCP's current estimate of minimum round trip time (RTT). Corresponds to `tcpi_min_rtt` from `struct tcp_info`.
-grpc.tcp.delivery_rate                  | Histogram (floating-point) | bit/s    | None   | Goodput measured of the TCP connection. Corresponds to `tcpi_delivery_rate` from `struct tcp_info`.
-grpc.tcp.packets_sent                   | Counter (integer)          | {packet} | None   | TCP packets sent. Corresponds to `tcpi_data_segs_out` from `struct tcp_info`.
-grpc.tcp.packets_retransmitted          | Counter (integer)          | {packet} | None   | TCP packets retransmitted. Corresponds to `tcpi_total_retrans` from `struct tcp_info`.
-grpc.tcp.packets_spurious_retransmitted | Counter (integer)          | {packet} | None   | TCP packets spuriously retransmitted packets. Corresponds to `tcpi_dsack_dups` from `struct tcp_info`.
+Name                                    | Type                       | Unit     | Labels (disposition)                                                                    | Description
+--------------------------------------- | -------------------------- | -------- | --------------------------------------------------------------------------------------- | -----------
+grpc.tcp.min_rtt                        | Histogram (floating-point) | s        | grpc.target (required), grpc.lb.locality (optional), grpc.lb.backend_service (optional) | TCP's current estimate of minimum round trip time (RTT). Corresponds to `tcpi_min_rtt` from `struct tcp_info`. Recommended histogram bucket boundaries are 0, 0.000001, 0.0000025, 0.000005, 0.0000075, 0.00001, 0.000025, 0.00005, 0.000075, 0.0001, 0.00025, 0.0005, 0.00075, 0.001, 0.0025, 0.005, 0.0075, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10, 25, 50, 75, 100.
+grpc.tcp.delivery_rate                  | Histogram (integer)        | By/s     | grpc.target (required), grpc.lb.locality (optional), grpc.lb.backend_service (optional) | Goodput measured of the TCP connection. Corresponds to `tcpi_delivery_rate` from `struct tcp_info`. Recommended histogram bucket boundaries are 0, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, 268435456, 536870912, 1073741824, 2147483648, 4294967296, 8589934592, 17179869184, 34359738368, 68719476736, 137438953472, 274877906944, 549755813888, 1099511627776, 2199023255552, 4398046511104.
+grpc.tcp.packets_sent                   | Counter (integer)          | {packet} | grpc.target (required), grpc.lb.locality (optional), grpc.lb.backend_service (optional) | TCP packets sent. Corresponds to `tcpi_data_segs_out` from `struct tcp_info`.
+grpc.tcp.packets_retransmitted          | Counter (integer)          | {packet} | grpc.target (required), grpc.lb.locality (optional), grpc.lb.backend_service (optional) | TCP packets retransmitted. Corresponds to `tcpi_total_retrans` from `struct tcp_info`.
+grpc.tcp.packets_spurious_retransmitted | Counter (integer)          | {packet} | grpc.target (required), grpc.lb.locality (optional), grpc.lb.backend_service (optional) | TCP packets spuriously retransmitted packets. Corresponds to `tcpi_dsack_dups` from `struct tcp_info`.
+
+Label Name              | Disposition | Description
+----------------------- | ----------- | -----------
+grpc.target             | Required    | For client-side sockets, indicates the target of the gRPC channel (defined in [A66].) Use "#server" for server-side sockets.
+grpc.lb.backend_service | Optional    | For client-side sockets, indicates the backend service to which an RPC is routed (defined in [A89].) Use "#server" for server-side sockets.
+grpc.lb.locality        | Optional    | For client-side sockets, indicates the locality to which the traffic is being sent. This will be set to the resolver attribute passed down from the weighted_target policy, or the empty string if the resolver attribute is unset (defined in [A78].) Use "#server" for server-side sockets.
+
+[A94] documents proposes the labels `grpc.lb.backend_service` and
+`grpc.lb.locality` to be propagated to individual subchannels. These attributes
+need to be further plumbed down to the layer where the TCP metrics are
+available.
 
 Suggested algorithm to collect metrics -
 
